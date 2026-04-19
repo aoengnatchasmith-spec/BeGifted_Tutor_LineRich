@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cancel Class</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; background: #f3f4f6; min-height: 100vh; }
+  .container { max-width: 480px; margin: 0 auto; background: white; min-height: 100vh; display: flex; flex-direction: column; }
+  .header { background: #06C755; color: white; padding: 14px 16px; font-size: 15px; font-weight: 600; }
+  .screen { flex: 1; padding: 22px 18px; display: none; flex-direction: column; }
+  .screen.active { display: flex; }
+  h2 { font-size: 22px; color: #111827; margin-bottom: 8px; }
+  .hint { color: #6b7280; font-size: 13px; margin-bottom: 22px; line-height: 1.5; }
+  label { display: block; font-size: 13px; color: #374151; font-weight: 500; margin-bottom: 6px; }
+  input, select, textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-bottom: 16px;
+    background: white;
+  }
+  select { cursor: pointer; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #06C755; }
+  textarea { min-height: 80px; resize: none; }
+  .btn { width: 100%; padding: 14px; background: #06C755; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; margin-top: 4px; }
+  .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+  .btn-secondary { background: white; color: #06C755; border: 1.5px solid #06C755; margin-top: 8px; }
+  .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: #6b7280; gap: 12px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #06C755; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 12px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+  .info-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 18px; font-size: 13px; color: #4b5563; line-height: 1.6; }
+  .info-box strong { color: #111827; }
+  .success-icon { width: 60px; height: 60px; background: #dcfce7; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 40px auto 20px; font-size: 30px; color: #06C755; }
+  .success { text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">Cancel Class</div>
+
+  <!-- Screen 1: Email auth -->
+  <div class="screen active" id="scr-login">
+    <h2>Welcome 👋</h2>
+    <p class="hint">Please enter the email registered with Wise.</p>
+    <div class="error" id="err-login" style="display:none"></div>
+    <label for="email">Tutor Email</label>
+    <input type="email" id="email" placeholder="tutor@begifted-education.com">
+    <button class="btn" id="btn-login">Verify</button>
+  </div>
+
+  <!-- Screen 2: Loading -->
+  <div class="screen" id="scr-loading">
+    <div class="loading">
+      <div class="spinner"></div>
+      <p style="font-size:14px" id="loading-text">Verifying...</p>
+    </div>
+  </div>
+
+  <!-- Screen 3: Submit -->
+  <div class="screen" id="scr-submit">
+    <h2 id="tutor-name">Tutor</h2>
+    <p class="hint">Select a class to cancel and provide a reason.</p>
+    <div class="error" id="err-submit" style="display:none"></div>
+
+    <label for="class-select">Class to cancel *</label>
+    <select id="class-select">
+      <option value="">— Select a class —</option>
+    </select>
+
+    <div class="info-box" id="class-info" style="display:none"></div>
+
+    <label for="reason">Reason for cancellation *</label>
+    <textarea id="reason" placeholder="e.g. Sick, urgent matter..."></textarea>
+
+    <button class="btn" id="btn-submit" disabled>Submit request</button>
+    <button class="btn btn-secondary" onclick="show('scr-login')">Logout</button>
+  </div>
+
+  <!-- Screen 4: Success -->
+  <div class="screen" id="scr-success">
+    <div class="success">
+      <div class="success-icon">✓</div>
+      <h2>Request submitted</h2>
+      <p class="hint" style="margin-top:10px">Admin will process within 1 hour.</p>
+      <button class="btn" onclick="closeApp()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  var state = { lineUserId: '', teacher: null, sessions: [] };
+
+  window.addEventListener('load', function() {
+    var LIFF_ID = '';
+    if (LIFF_ID && typeof liff !== 'undefined') {
+      liff.init({ liffId: LIFF_ID })
+        .then(function() { if (liff.isLoggedIn()) return liff.getProfile().then(function(p) { state.lineUserId = p.userId; }); })
+        .catch(function(e) { console.warn(e); });
+    }
+  });
+
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+    window.scrollTo(0, 0);
+  }
+
+  var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmt(iso) {
+    var d = new Date(iso);
+    return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' +
+           ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+  }
+  function range(a, b) {
+    var d2 = new Date(b);
+    return fmt(a) + '–' + ('0'+d2.getHours()).slice(-2) + ':' + ('0'+d2.getMinutes()).slice(-2);
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function(c) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+    });
+  }
+
+  // Step 1: login
+  document.getElementById('btn-login').addEventListener('click', function() {
+    var email = document.getElementById('email').value.trim();
+    var err = document.getElementById('err-login');
+    err.style.display = 'none';
+    if (!email || !email.includes('@')) {
+      err.textContent = 'Please enter a valid email.';
+      err.style.display = 'block';
+      return;
+    }
+    document.getElementById('loading-text').textContent = 'Verifying...';
+    show('scr-loading');
+    google.script.run
+      .withSuccessHandler(onValidated)
+      .withFailureHandler(function(e) {
+        document.getElementById('err-login').textContent = String(e);
+        document.getElementById('err-login').style.display = 'block';
+        show('scr-login');
+      })
+      .validateEmail(email);
+  });
+
+  function onValidated(r) {
+    if (!r.ok) {
+      var err = document.getElementById('err-login');
+      if (r.error === 'NOT_FOUND') err.textContent = 'Email not found in tutor records.';
+      else if (r.error === 'INVALID_EMAIL') err.textContent = 'Please enter a valid email.';
+      else err.textContent = r.message || 'Could not connect to Wise API.';
+      err.style.display = 'block';
+      show('scr-login');
+      return;
+    }
+    state.teacher = r.teacher;
+    document.getElementById('loading-text').textContent = 'Loading your classes...';
+    google.script.run
+      .withSuccessHandler(onSessions)
+      .withFailureHandler(function(e) {
+        document.getElementById('err-login').textContent = String(e);
+        document.getElementById('err-login').style.display = 'block';
+        show('scr-login');
+      })
+      .getSessions(r.teacher.teacherId);
+  }
+
+  function onSessions(r) {
+    if (!r.ok) {
+      document.getElementById('err-login').textContent = r.message;
+      document.getElementById('err-login').style.display = 'block';
+      show('scr-login');
+      return;
+    }
+    state.sessions = r.sessions;
+    document.getElementById('tutor-name').textContent = state.teacher.name || 'Tutor';
+
+    var select = document.getElementById('class-select');
+    select.innerHTML = '<option value="">— Select a class —</option>';
+    if (!r.sessions.length) {
+      select.innerHTML += '<option disabled>(No classes in this period)</option>';
+    } else {
+      r.sessions.forEach(function(s) {
+        var students = s.students.length ? ' (' + s.students.join(', ') + ')' : '';
+        var label = range(s.startTime, s.endTime) + ' — ' + s.className + students;
+        var opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = label;
+        select.appendChild(opt);
+      });
+    }
+    show('scr-submit');
+  }
+
+  // Dropdown change
+  document.getElementById('class-select').addEventListener('change', function(e) {
+    var id = e.target.value;
+    var info = document.getElementById('class-info');
+    var btn = document.getElementById('btn-submit');
+    if (!id) { info.style.display = 'none'; btn.disabled = true; return; }
+    var s = state.sessions.find(function(x) { return x.id === id; });
+    if (!s) return;
+    var students = s.students.length ? s.students.join(', ') : '—';
+    info.innerHTML =
+      '<strong>Date/Time:</strong> ' + range(s.startTime, s.endTime) + '<br>' +
+      '<strong>Class:</strong> ' + esc(s.className) + '<br>' +
+      '<strong>Students:</strong> ' + esc(students);
+    info.style.display = 'block';
+    btn.disabled = false;
+  });
+
+  // Submit
+  document.getElementById('btn-submit').addEventListener('click', function() {
+    var reason = document.getElementById('reason').value.trim();
+    var err = document.getElementById('err-submit');
+    err.style.display = 'none';
+    if (!reason) { err.textContent = 'Please provide a reason.'; err.style.display = 'block'; return; }
+    var id = document.getElementById('class-select').value;
+    var s = state.sessions.find(function(x) { return x.id === id; });
+    if (!s) return;
+
+    document.getElementById('loading-text').textContent = 'Submitting...';
+    show('scr-loading');
+
+    google.script.run
+      .withSuccessHandler(function(r) {
+        if (r.ok) show('scr-success');
+        else {
+          document.getElementById('err-submit').textContent = r.message;
+          document.getElementById('err-submit').style.display = 'block';
+          show('scr-submit');
+        }
+      })
+      .submitCancelRequest({
+        lineId:          state.lineUserId,
+        tutorName:       state.teacher.name,
+        email:           state.teacher.email,
+        sessionId:       s.id,
+        sessionDatetime: s.startTime,
+        className:       s.className,
+        studentName:     s.students.join(', '),
+        reason:          reason,
+      });
+  });
+
+  function closeApp() {
+    if (typeof liff !== 'undefined' && liff.closeWindow) {
+      try { liff.closeWindow(); return; } catch (e) {}
+    }
+    window.close();
+  }
+</script>
+</body>
+</html>
